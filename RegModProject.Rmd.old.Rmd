@@ -1,0 +1,143 @@
+---
+title: 'Regression Models Course Project: Analysis of Mileage and Transmission Type'
+author: "juradom"
+date: "April 17, 2015"
+output: pdf_document
+---
+####Executive Summary
+The goal of this analysis is to answer the following two questions leveraging the mtcars dataset within R:
+
+* Is an automatic or manual transmission better for MPG
+* Quantify the MPG difference between automatic and manual transmissions"
+
+####Exploratory Analysis
+```{r echo=FALSE}
+library(datasets)
+data(mtcars)
+
+##factorizing variables
+mtcars$am <-factor(mtcars$am,
+                   labels=c("automatic","manual"))
+mtcars$vs <-factor(mtcars$vs,
+                   labels=c("V","S"))
+
+mpg.manual <- mtcars$mpg[mtcars$am=="manual"]
+mpg.auto <- mtcars$mpg[mtcars$am=="automatic"]
+## determine mean
+mean.manual <- mean(mpg.manual)
+sd.manual <- sd(mpg.manual)
+
+mean.auto <- mean(mpg.auto)
+sd.auto <- sd(mpg.auto)
+
+## determine variance
+var.manual <- var(mtcars$mpg[mtcars$am=="manual"])
+var.auto <- var(mtcars$mpg[mtcars$am=="automatic"])
+
+## test for normality
+shapiro.manual <- shapiro.test(mpg.manual)
+shapiro.auto <- shapiro.test(mpg.auto)
+
+```
+As described in the R documentation, the mtcars dataset is derived from a 1974 Motor Trend magazine. 
+ 
+* **mtcars Structure**:
+    - This data contains 32 observation of 11 variables.
+    - 19 of the observations are automatic transmission; 13 are manual  
+    - _Appendix A_ contains other structural info about the mtcars dataset.
+* Research note: Around the time of the Motor Trend study, a 1975 EPA document was published indicating that weight and engine displacement are the most important factors in fuel economy (http://nepis.epa.gov/Exe/ZyPURL.cgi?Dockey=9100S2LD.txt) 
+* **Mean Values**: The average miles per gallon of the manual sample as: **`r round(mean.manual, digits=2)`** and the automatic transmission mean as: **`r round(mean.auto, digits=2)`**.
+* **Variances**: The variances for manual and automatic transmission are: **`r round(var.manual, digits=2)`** and **`r round(var.auto,digits=2) `**, respectively.  I suspect the variance issue is due to the small sample size so I will assume they are the same.
+* **Normality**: _Appendix B_ shows two density plots that appear to be normal but to be sure I performed a Shapiro test for normality.  The p-value for the manual plot is: **`r round(shapiro.manual$p.value,digits=2) `**.  The p-value for the automatic plot is: **`r round(shapiro.auto$p.value,digits=2) `**.  Since null hypothesis in the Shapiro tests **against** the assumption of normalty, we cannot reject the null hypothesis because both p-values are > .05.  
+ 
+####Regression Analysis
+
+#####**_Means Testing_**  
+```{r}
+#am.wilcox.test <- suppressWarnings(wilcox.test(mtcars$mpg~mtcars$am))
+am.t.test <- t.test(mtcars$mpg~mtcars$am)
+```
+The p-value for the t-test is: **`r round(am.t.test$p.value, digits=4)`**, therefore, we can reject the null hypothesis and determine that the two population means are different.  
+
+#####**_Interpreting Coefficients And Finding The Best Fitting Model_**  
+_Appendix C_ summarizes the base model **lm(mpg~.)**.  This model can explain 81% of the variance in mpg.  None of the p-values are less than 0.05 we can't reject Ho which means none of the variables make a significant contribution.  
+
+Alternatively we can still find the best fitting model by performing a Stepwise Algorithm.  _Appendix D_ shows the output and reveals that with this model ~83% of the variance in mpg can be explained using this model.  The p-values are all < 0.05 which means that wt, qsec, and am are all significant variables.
+
+```{r results='hide'}
+fit <- lm(mpg~., data=mtcars)
+model.step <- step(fit)
+best.step.model <- summary(model.step)$call
+```
+We conclude that the best formula is:
+```{r echo=FALSE}
+best.step.model
+```
+#####**_Finding Interactions_**
+Below is a test to see if any interactions are significant.
+```{r}
+am.wt <- summary(lm(formula = mpg ~ wt + qsec + am + am:wt, data = mtcars))$coef[5,4]
+am.qsec <- summary(lm(formula = mpg ~ wt + qsec + am + am:qsec, data = mtcars))$coef[5,4]
+qsec.wt <- summary(lm(formula = mpg ~ wt + qsec + am + qsec:wt, data = mtcars))$coef[5,4]
+best.fit.model <- summary(lm(formula = mpg ~ wt + qsec + am + am:wt, data = mtcars))$call
+```
+Based on the different combinations, it appears that the am:wt interaction with a p-value of: `r round(am.wt, digits=4)`. So our best fitted model is: **summary(lm(formula = mpg ~ wt + qsec + am + am:wt, data = mtcars))$call**
+
+#####**_ANOVA_**
+```{r}
+anova(fit,best.fit.model)
+```
+
+####Conclusions
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+\pagebreak
+
+####Appendix A: Structural Analysis of mtcars
+
+```{r}
+
+library(ggplot2)
+
+str(mtcars)
+base.plot <- qplot(am, mpg, data=mtcars) 
+mpg.am.coef <- coef(lm(mpg~am, data=mtcars))
+base.plot + geom_abline(intercept=mpg.am.coef[1], slope=mpg.am.coef[2])
+
+```    
+
+####Appendix B: Testing Normality  
+
+```{r echo=FALSE}
+par(mfrow = c(1,2))
+##manual histogram
+n.man <- NROW(mtcars$am[mtcars$am=="manual"])
+hist(mtcars$mpg[mtcars$am=="manual"],
+     breaks=n.man,
+     xlim = c(10,40),
+     xlab="MPG",
+     prob=TRUE,
+     main="Manual Trans Density")
+lines(density(mtcars$mpg[mtcars$am=="manual"]))  
+
+#auto histogram
+n.auto <- NROW(mtcars$am[mtcars$am=="automatic"])
+hist(mtcars$mpg[mtcars$am=="automatic"],
+     breaks=n.auto,
+     xlim = c(5,40),
+     xlab="MPG",
+     prob=TRUE,
+     main="Automatic Trans Density")
+lines(density(mtcars$mpg[mtcars$am=="automatic"]))
+
+ 
+```
+
+####Appendix C: Summary Of The Base Model
+```{r}
+summary(fit)
+```
+####Appendix D: Summary Of The Best Model
+```{r}
+summary(model.step)
+```
